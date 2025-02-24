@@ -2,17 +2,22 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Virus Shooter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR Virus Shooter 3D</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
+            background: black;
         }
         #video {
             width: 100vw;
             height: 100vh;
             object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: scaleX(-1); /* Отзеркаливаем видео для естественного вида */
         }
         #canvas {
             position: absolute;
@@ -32,6 +37,7 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
             pointer-events: none;
+            z-index: 10;
         }
         .virus {
             position: absolute;
@@ -40,18 +46,39 @@
             background: green;
             border-radius: 50%;
             transition: all 0.1s;
+            z-index: 5;
+        }
+        #shootButton {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: red;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 20;
+        }
+        #shootButton:hover {
+            background: darkred;
         }
     </style>
 </head>
 <body>
-    <video id="video" autoplay></video>
+    <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
     <div id="crosshair"></div>
+    <button id="shootButton">Стрелять</button>
 
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const crosshair = document.getElementById('crosshair');
+        const shootButton = document.getElementById('shootButton');
         let viruses = [];
 
         // Настройка камеры
@@ -60,6 +87,7 @@
                 video.srcObject = stream;
                 video.play();
                 resizeCanvas();
+                animate();
             })
             .catch(err => console.error('Ошибка доступа к камере:', err));
 
@@ -70,58 +98,85 @@
         }
         window.addEventListener('resize', resizeCanvas);
 
-        // Создание вируса
+        // Создание вируса в 3D-пространстве (имитация)
         function spawnVirus() {
+            const angle = Math.random() * 2 * Math.PI; // Случайный угол вокруг пользователя
+            const distance = Math.random() * 1000 + 500; // Начальное расстояние (дальше от камеры)
+            const x = canvas.width / 2 + Math.cos(angle) * distance;
+            const y = canvas.height / 2 + Math.sin(angle) * distance;
             const virus = {
-                x: Math.random() * (canvas.width - 30),
-                y: Math.random() * (canvas.height - 30),
-                speedX: (Math.random() - 0.5) * 4,
-                speedY: (Math.random() - 0.5) * 4,
+                x: x,
+                y: y,
+                angle: angle,
+                distance: distance,
+                speed: 2, // Скорость движения к пользователю
+                size: 30, // Начальный размер
                 element: document.createElement('div')
             };
             virus.element.className = 'virus';
-            virus.element.style.left = virus.x + 'px';
-            virus.element.style.top = virus.y + 'px';
+            virus.element.style.left = virus.x - virus.size / 2 + 'px';
+            virus.element.style.top = virus.y - virus.size / 2 + 'px';
+            virus.element.style.width = virus.size + 'px';
+            virus.element.style.height = virus.size + 'px';
             document.body.appendChild(virus.element);
             viruses.push(virus);
         }
 
-        // Обновление позиций вирусов
+        // Обновление позиций вирусов (движение к пользователю)
         function updateViruses() {
             viruses.forEach((virus, index) => {
-                virus.x += virus.speedX;
-                virus.y += virus.speedY;
+                // Уменьшаем расстояние, чтобы вирус двигался к центру (пользователю)
+                virus.distance -= virus.speed;
+                if (virus.distance < 0) virus.distance = 0;
 
-                // Ограничение движения внутри экрана
-                if (virus.x <= 0 || virus.x >= canvas.width - 30) virus.speedX *= -1;
-                if (virus.y <= 0 || virus.y >= canvas.height - 30) virus.speedY *= -1;
+                // Вычисляем новые координаты
+                const x = canvas.width / 2 + Math.cos(virus.angle) * virus.distance;
+                const y = canvas.height / 2 + Math.sin(virus.angle) * virus.distance;
 
-                virus.element.style.left = virus.x + 'px';
-                virus.element.style.top = virus.y + 'px';
-            });
-        }
+                // Увеличиваем размер вируса по мере приближения
+                virus.size = 30 + (1000 - virus.distance) * 0.05; // Максимальный размер 80px
+                if (virus.size > 80) virus.size = 80;
 
-        // Проверка попадания
-        function checkHit(x, y) {
-            const crosshairX = canvas.width / 2;
-            const crosshairY = canvas.height / 2;
-            viruses.forEach((virus, index) => {
-                const dist = Math.sqrt((virus.x + 15 - crosshairX) ** 2 + (virus.y + 15 - crosshairY) ** 2);
-                if (dist < 25) {
+                // Обновляем позицию и размер вируса
+                virus.element.style.left = x - virus.size / 2 + 'px';
+                virus.element.style.top = y - virus.size / 2 + 'px';
+                virus.element.style.width = virus.size + 'px';
+                virus.element.style.height = virus.size + 'px';
+
+                // Удаляем вирус, если он слишком близко
+                if (virus.distance <= 0) {
                     document.body.removeChild(virus.element);
                     viruses.splice(index, 1);
                 }
             });
         }
 
-        // Стрельба по клику
-        canvas.addEventListener('click', (e) => {
-            checkHit(e.clientX, e.clientY);
-        });
+        // Проверка попадания (вирус в прицеле)
+        function checkHit() {
+            const crosshairX = canvas.width / 2;
+            const crosshairY = canvas.height / 2;
+            viruses.forEach((virus, index) => {
+                const dist = Math.sqrt((virus.x - crosshairX) ** 2 + (virus.y - crosshairY) ** 2);
+                if (dist < virus.size / 2 + 20) { // Прицел захватывает вирус, если он близко
+                    document.body.removeChild(virus.element);
+                    viruses.splice(index, 1);
+                }
+            });
+        }
 
-        // Основной игровой цикл
-        setInterval(spawnVirus, 2000); // Новый вирус каждые 2 секунды
-        setInterval(updateViruses, 1000 / 60); // 60 FPS
+        // Обработка стрельбы через кнопку и тап
+        shootButton.addEventListener('click', checkHit);
+        canvas.addEventListener('click', checkHit);
+
+        // Анимация и основной цикл
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            updateViruses();
+            requestAnimationFrame(animate);
+        }
+
+        // Спавн вирусов каждые 2 секунды
+        setInterval(spawnVirus, 2000);
     </script>
 </body>
 </html>

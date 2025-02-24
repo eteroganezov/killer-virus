@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Virus Shooter 3D</title>
+    <title>AR Virus Shooter 3D Room</title>
     <style>
         body {
             margin: 0;
@@ -41,12 +41,13 @@
         }
         .virus {
             position: absolute;
-            width: 30px;
-            height: 30px;
+            width: 20px; /* Начальный размер (маленький, как будто далеко) */
+            height: 20px;
             background: green;
             border-radius: 50%;
             transition: all 0.1s;
             z-index: 5;
+            opacity: 0.8; /* Лёгкая прозрачность для эффекта глубины */
         }
         #shootButton {
             position: fixed;
@@ -80,6 +81,7 @@
         const crosshair = document.getElementById('crosshair');
         const shootButton = document.getElementById('shootButton');
         let viruses = [];
+        let userPosition = { x: canvas.width / 2, y: canvas.height / 2 }; // Позиция пользователя (центр экрана)
 
         // Настройка камеры
         navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
@@ -98,52 +100,63 @@
         }
         window.addEventListener('resize', resizeCanvas);
 
-        // Создание вируса в 3D-пространстве (имитация)
+        // Создание вируса в пространстве комнаты
         function spawnVirus() {
-            const angle = Math.random() * 2 * Math.PI; // Случайный угол вокруг пользователя
-            const distance = Math.random() * 1000 + 500; // Начальное расстояние (дальше от камеры)
-            const x = canvas.width / 2 + Math.cos(angle) * distance;
-            const y = canvas.height / 2 + Math.sin(angle) * distance;
+            const angle = Math.random() * 2 * Math.PI; // Случайный угол вокруг пользователя (по комнате)
+            const maxDistance = Math.min(canvas.width, canvas.height) * 2; // Максимальное расстояние (за пределы экрана)
+            const distance = maxDistance; // Начальное расстояние (вирус "далеко" в комнате)
+            const x = userPosition.x + Math.cos(angle) * distance;
+            const y = userPosition.y + Math.sin(angle) * distance;
             const virus = {
-                x: x,
-                y: y,
+                startX: x,
+                startY: y,
                 angle: angle,
                 distance: distance,
                 speed: 2, // Скорость движения к пользователю
-                size: 30, // Начальный размер
+                size: 20, // Начальный размер (маленький, как будто далеко)
                 element: document.createElement('div')
             };
             virus.element.className = 'virus';
-            virus.element.style.left = virus.x - virus.size / 2 + 'px';
-            virus.element.style.top = virus.y - virus.size / 2 + 'px';
+            virus.element.style.left = virus.startX - virus.size / 2 + 'px';
+            virus.element.style.top = virus.startY - virus.size / 2 + 'px';
             virus.element.style.width = virus.size + 'px';
             virus.element.style.height = virus.size + 'px';
             document.body.appendChild(virus.element);
             viruses.push(virus);
         }
 
-        // Обновление позиций вирусов (движение к пользователю)
+        // Обновление позиций вирусов (движение к пользователю в пространстве комнаты)
         function updateViruses() {
             viruses.forEach((virus, index) => {
-                // Уменьшаем расстояние, чтобы вирус двигался к центру (пользователю)
+                // Движение вируса к последнему известному положению пользователя
                 virus.distance -= virus.speed;
                 if (virus.distance < 0) virus.distance = 0;
 
-                // Вычисляем новые координаты
-                const x = canvas.width / 2 + Math.cos(virus.angle) * virus.distance;
-                const y = canvas.height / 2 + Math.sin(virus.angle) * virus.distance;
+                // Вычисляем новые координаты относительно текущей позиции пользователя
+                const x = userPosition.x + Math.cos(virus.angle) * virus.distance;
+                const y = userPosition.y + Math.sin(virus.angle) * virus.distance;
 
                 // Увеличиваем размер вируса по мере приближения
-                virus.size = 30 + (1000 - virus.distance) * 0.05; // Максимальный размер 80px
-                if (virus.size > 80) virus.size = 80;
+                virus.size = 20 + (maxDistance - virus.distance) * 0.05; // Максимальный размер 120px
+                if (virus.size > 120) virus.size = 120;
 
-                // Обновляем позицию и размер вируса
-                virus.element.style.left = x - virus.size / 2 + 'px';
-                virus.element.style.top = y - virus.size / 2 + 'px';
-                virus.element.style.width = virus.size + 'px';
-                virus.element.style.height = virus.size + 'px';
+                // Проверяем, виден ли вирус на экране
+                const isVisible = (
+                    x > 0 && x < canvas.width &&
+                    y > 0 && y < canvas.height
+                );
 
-                // Удаляем вирус, если он слишком близко
+                if (isVisible) {
+                    virus.element.style.left = x - virus.size / 2 + 'px';
+                    virus.element.style.top = y - virus.size / 2 + 'px';
+                    virus.element.style.width = virus.size + 'px';
+                    virus.element.style.height = virus.size + 'px';
+                    virus.element.style.display = 'block'; // Показываем вирус
+                } else {
+                    virus.element.style.display = 'none'; // Скрываем, если вне экрана
+                }
+
+                // Удаляем вирус, если он слишком близко или улетел
                 if (virus.distance <= 0) {
                     document.body.removeChild(virus.element);
                     viruses.splice(index, 1);
@@ -151,13 +164,30 @@
             });
         }
 
+        // Обработка движения камеры (поворота пользователя)
+        function updateUserPosition(event) {
+            // Имитация движения пользователя через поворот устройства (основана на событиях мыши/тапа для простоты)
+            // В реальной AR это требует акселерометра или WebXR, но мы используем базовую логику
+            if (event.type === 'mousemove' || event.type === 'touchmove') {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.type === 'mousemove' ? event.clientX - rect.left : event.touches[0].clientX - rect.left;
+                const y = event.type === 'mousemove' ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
+                userPosition = { x: x, y: y }; // Обновляем позицию пользователя (центр прицела)
+            }
+        }
+
+        canvas.addEventListener('mousemove', updateUserPosition);
+        canvas.addEventListener('touchmove', updateUserPosition);
+
         // Проверка попадания (вирус в прицеле)
         function checkHit() {
-            const crosshairX = canvas.width / 2;
-            const crosshairY = canvas.height / 2;
+            const crosshairX = userPosition.x;
+            const crosshairY = userPosition.y;
             viruses.forEach((virus, index) => {
-                const dist = Math.sqrt((virus.x - crosshairX) ** 2 + (virus.y - crosshairY) ** 2);
-                if (dist < virus.size / 2 + 20) { // Прицел захватывает вирус, если он близко
+                const x = userPosition.x + Math.cos(virus.angle) * virus.distance;
+                const y = userPosition.y + Math.sin(virus.angle) * virus.distance;
+                const dist = Math.sqrt((x - crosshairX) ** 2 + (y - crosshairY) ** 2);
+                if (dist < virus.size / 2 + 20 && virus.element.style.display === 'block') { // Проверяем только видимые вирусы
                     document.body.removeChild(virus.element);
                     viruses.splice(index, 1);
                 }
@@ -167,6 +197,7 @@
         // Обработка стрельбы через кнопку и тап
         shootButton.addEventListener('click', checkHit);
         canvas.addEventListener('click', checkHit);
+        canvas.addEventListener('touchend', checkHit);
 
         // Анимация и основной цикл
         function animate() {
